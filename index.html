@@ -3,622 +3,357 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Ultimate Mini-Fortnite BR — Upgraded</title>
+<title>Mini 3D Fortnite BR (Three.js)</title>
 <style>
-  :root{
-    --bg:#87ceeb;
-    --ground:#4CAF50;
-    --hud-bg:rgba(0,0,0,0.45);
-    --accent:#ffd700;
-  }
-  html,body{height:100%;margin:0;background:var(--bg);font-family:Inter,system-ui,Arial,Helvetica,sans-serif;touch-action:none}
-  #gameCanvas{display:block;margin:0 auto;background:var(--ground);border:2px solid #222;max-width:100%;height:auto}
-  #ui{position:fixed;left:8px;top:8px;right:8px;pointer-events:none;}
-  #hud{display:flex;gap:12px;align-items:center;pointer-events:auto}
-  .panel{background:var(--hud-bg);color:#fff;padding:8px 10px;border-radius:8px;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.25)}
-  #scoreboard{position:fixed;left:8px;bottom:8px;pointer-events:auto}
-  #minimap{position:fixed;right:12px;top:12px;width:160px;height:120px;background:rgba(0,0,0,0.35);border-radius:6px;padding:6px;box-sizing:border-box;pointer-events:auto}
-  #minimap canvas{width:100%;height:100%;display:block;border-radius:4px;background:rgba(255,255,255,0.04)}
-  /* Touch controls */
-  #touch-controls{position:fixed;left:0;bottom:0;width:100%;height:170px;pointer-events:none}
-  #joystick{position:absolute;left:18px;bottom:18px;width:140px;height:140px;border-radius:50%;pointer-events:auto;touch-action:none}
-  #joy-base{width:100%;height:100%;background:rgba(0,0,0,0.15);border-radius:50%}
-  #joy-stick{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,0.18);pointer-events:none}
-  #fire-btn{position:absolute;right:28px;bottom:28px;width:92px;height:92px;border-radius:50%;background:linear-gradient(180deg,#ff6b6b,#c53030);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:18px;pointer-events:auto}
-  /* small helper */
-  .muted{opacity:0.7;font-size:12px}
+  html,body{height:100%;margin:0;overflow:hidden;background:#111;}
+  canvas{display:block}
+  #overlay{position:fixed;left:12px;top:12px;color:#fff;font-family:Arial,Helvetica,sans-serif;z-index:20}
+  #overlay .panel{background:rgba(0,0,0,0.55);padding:8px 10px;border-radius:8px;margin-bottom:8px}
+  #center-hint{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#fff;pointer-events:none;font-family:monospace;opacity:0.9}
+  #startBtn{display:inline-block;background:#2d9cdb;padding:12px 18px;border-radius:8px;cursor:pointer}
 </style>
 </head>
 <body>
-<canvas id="gameCanvas" width="960" height="640"></canvas>
-
-<div id="ui">
-  <div id="hud" style="pointer-events:auto">
-    <div class="panel" id="hpPanel">HP: <strong id="hp">100</strong></div>
-    <div class="panel" id="killsPanel">Kills: <strong id="kills">0</strong></div>
-    <div class="panel" id="lootPanel">Loot: <strong id="loot">0</strong></div>
-    <div class="panel" id="weaponPanel">Weapon: <strong id="weapon">Pistol</strong></div>
-    <div class="panel muted" id="hint" style="margin-left:auto">WASD / Arrow = Move • Click = Shoot • Touch: Joystick + Fire</div>
-  </div>
+<div id="overlay">
+  <div class="panel">HP: <span id="hp">100</span> &nbsp; Kills: <span id="kills">0</span></div>
+  <div class="panel">WASD = laufen, Maus = zielen, Klick = Schießen</div>
+  <div class="panel">Tipp: Teste über <code>http://localhost:8080</code> oder GitHub Pages</div>
 </div>
+<div id="center-hint"><div id="startBtn">Klicke hier zum Starten (Pointer Lock)</div></div>
 
-<div id="minimap" class="panel">
-  <canvas id="miniCanvas" width="320" height="240"></canvas>
-  <div class="muted" style="font-size:12px;margin-top:6px">Minimap</div>
-</div>
+<script type="module">
+import * as THREE from 'https://unpkg.com/three@0.152.2/build/three.module.js';
+import { PointerLockControls } from 'https://unpkg.com/three@0.152.2/examples/jsm/controls/PointerLockControls.js';
 
-<div id="scoreboard" style="pointer-events:auto">
-  <div class="panel" id="scoreboardPanel">Scoreboard loading...</div>
-</div>
+/* ---------- Szene & Renderer ---------- */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
 
-<!-- Touch controls -->
-<div id="touch-controls">
-  <div id="joystick" style="pointer-events:auto">
-    <div id="joy-base"></div>
-    <div id="joy-stick"></div>
-  </div>
-  <div id="fire-btn" style="pointer-events:auto">FIRE</div>
-</div>
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 2000);
+camera.position.set(0, 1.6, 0); // eye height
 
-<script>
-/* -------------------------
-   Game constants & helpers
-   ------------------------- */
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-const miniCanvas = document.getElementById('miniCanvas');
-const mctx = miniCanvas.getContext('2d');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
 
-const W = canvas.width, H = canvas.height;
+/* ---------- Licht ---------- */
+const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.9);
+hemi.position.set(0,200,0);
+scene.add(hemi);
+const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+dir.position.set(-100,100,-100);
+scene.add(dir);
 
-function rand(min,max){ return Math.random()*(max-min)+min; }
-function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
-function distance(a,b){ let dx=a.x-b.x, dy=a.y-b.y; return Math.sqrt(dx*dx+dy*dy); }
-function circleOverlap(x1,y1,r1,x2,y2,r2){ let dx=x1-x2,dy=y1-y2; return dx*dx+dy*dy <= (r1+r2)*(r1+r2); }
+/* ---------- Boden (Terrain) ---------- */
+const groundGeo = new THREE.PlaneGeometry(160, 160, 8, 8);
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x317a31 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI/2;
+scene.add(ground);
 
-/* -------------------------
-   Audio: simple WebAudio tones
-   ------------------------- */
-const AudioCtx = window.AudioContext || window.webkitAudioContext;
-const audioCtx = new AudioCtx();
+/* ---------- Ring (shrinkable) ---------- */
+let ringRadius = 70;
+const ringGeom = new THREE.RingGeometry(ringRadius-0.8, ringRadius, 128);
+const ringMat = new THREE.MeshBasicMaterial({ color:0xff4444, side:THREE.DoubleSide, transparent:true, opacity:0.9 });
+const ringMesh = new THREE.Mesh(ringGeom, ringMat);
+ringMesh.rotation.x = -Math.PI/2;
+scene.add(ringMesh);
 
-function beep(freq, duration=0.06, type='sine', gain=0.08){
-  const o = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-  o.type = type; o.frequency.value = freq;
-  g.gain.value = gain;
-  o.connect(g); g.connect(audioCtx.destination);
-  o.start();
-  o.stop(audioCtx.currentTime + duration);
-}
-
-function playShoot(){ beep(900, 0.05, 'square', 0.06); }
-function playHit(){ beep(420, 0.05, 'sawtooth', 0.04); }
-function playLoot(){ beep(1200, 0.08, 'triangle', 0.08); }
-function playGameOver(){ beep(220,0.2,'sine',0.12); setTimeout(()=>beep(160,0.2,'sine',0.09),220); }
-
-/* -------------------------
-   Game state
-   ------------------------- */
-let player = {
-  x: W/2, y: H/2, size: 22, speed: 4.2, hp: 100, maxHp:100,
-  weapon: 'Pistol', damage: 22, fireRate: 12, cooldown:0,
-  kills:0, loot:0
+/* ---------- Player (logic-only: camera + collider) ---------- */
+const player = {
+  pos: new THREE.Vector3(0, 0, 0),
+  velocity: new THREE.Vector3(),
+  speed: 6.2,
+  hp: 100,
+  kills: 0
 };
 
-let bullets = []; // {x,y,dx,dy,damage,ttl}
-let enemies = []; // {x,y,size,hp,maxHp,speed,state,patrolTarget}
-let loots = [];   // {x,y,type,size}
-let buildings = []; // {x,y,w,h}
-let particles = []; // particle effects
+/* ---------- Controls (Pointer Lock) ---------- */
+const controls = new PointerLockControls(camera, renderer.domElement);
 
-let ring = {x: W/2, y: H/2, radius: Math.min(W,H)*0.45, shrinkRate: 0.006, tick:0};
-let gameOver = false;
-let lastTimestamp = 0;
+const startBtn = document.getElementById('startBtn');
+startBtn.addEventListener('click', ()=> {
+  controls.lock();
+});
+controls.addEventListener('lock', () => {
+  document.getElementById('center-hint').style.display = 'none';
+});
+controls.addEventListener('unlock', () => {
+  document.getElementById('center-hint').style.display = '';
+});
 
-/* -------------------------
-   Init map: buildings + enemies + loot
-   ------------------------- */
-function initMap(){
-  buildings = [];
-  for(let i=0;i<8;i++){
-    let bw = rand(60,140), bh = rand(40,120);
-    let bx = rand(40, W - bw - 40), by = rand(40, H - bh - 40);
-    buildings.push({x:bx,y:by,w:bw,h:bh});
-  }
-  enemies = [];
-  for(let i=0;i<12;i++) spawnEnemy();
-  loots = [];
-  for(let i=0;i<6;i++) spawnLoot();
+/* ---------- Map: simple boxes as buildings ---------- */
+const buildings = [];
+const buildingMat = new THREE.MeshStandardMaterial({ color: 0x6b3f2f });
+for(let i=0;i<10;i++){
+  const w = THREE.MathUtils.randFloat(4, 14);
+  const d = THREE.MathUtils.randFloat(4, 14);
+  const h = THREE.MathUtils.randFloat(3, 12);
+  const bx = THREE.MathUtils.randFloatSpread(120);
+  const bz = THREE.MathUtils.randFloatSpread(120);
+  const geom = new THREE.BoxGeometry(w, h, d);
+  const m = new THREE.Mesh(geom, buildingMat);
+  m.position.set(bx, h/2, bz);
+  scene.add(m);
+  buildings.push({mesh: m, w, d, h, x:bx, z:bz});
 }
+
+/* ---------- Enemies (boxes) ---------- */
+const enemies = [];
+const enemyMat = new THREE.MeshStandardMaterial({ color: 0xd33 });
 function spawnEnemy(){
-  // spawn at edges
-  let edge = Math.floor(rand(0,4));
-  let x = edge===0? rand(0,W) : edge===1? 0 : edge===2? rand(0,W) : W;
-  let y = edge===0? 0 : edge===1? rand(0,H) : edge===2? H : rand(0,H);
-  let hp = rand(50,110);
-  enemies.push({
-    x,y,size:20,hp, maxHp: hp,
-    speed: rand(0.8,2.2),
-    state: 'patrol', patrolTarget: {x: rand(80,W-80), y: rand(80,H-80)},
-    agroRadius: rand(140,240), fleeThreshold: rand(12,28)
-  });
+  const ex = THREE.MathUtils.randFloatSpread(140);
+  const ez = THREE.MathUtils.randFloatSpread(140);
+  const geo = new THREE.BoxGeometry(1.2, 1.8, 1.2);
+  const mesh = new THREE.Mesh(geo, enemyMat);
+  mesh.position.set(ex, 0.9, ez);
+  scene.add(mesh);
+  enemies.push({mesh, hp: THREE.MathUtils.randFloat(30, 90), speed: THREE.MathUtils.randFloat(0.6,1.8), state:'patrol', target: new THREE.Vector3(THREE.MathUtils.randFloatSpread(60),0,THREE.MathUtils.randFloatSpread(60))});
 }
-function spawnLoot(){
-  let x = rand(40, W-40), y = rand(40,H-40);
-  // avoid inside buildings
-  if(buildings.some(b => x>b.x && x<b.x+b.w && y>b.y && y<b.y+b.h)){ return spawnLoot(); }
-  let type = Math.random() < 0.55 ? 'heal' : (Math.random()<0.6?'rifle':'boost');
-  loots.push({x,y,type,size:12});
-}
+for(let i=0;i<10;i++) spawnEnemy();
 
-/* -------------------------
-   Particle system
-   ------------------------- */
-function spawnParticles(x,y,color,count=12,spread=2.8){
-  for(let i=0;i<count;i++){
-    particles.push({
-      x,y, vx: Math.cos(rand(0,Math.PI*2))*rand(0.6,spread), vy: Math.sin(rand(0,Math.PI*2))*rand(0.6,spread),
-      life: rand(20,42), color, size: rand(1.8,4.5)
-    });
-  }
-}
+/* ---------- Bullets (spheres) ---------- */
+const bullets = [];
+const bulletGeo = new THREE.SphereGeometry(0.08,8,8);
+const bulletMat = new THREE.MeshBasicMaterial({ color:0xffea6a });
 
-/* -------------------------
-   Input: keyboard & mouse
-   ------------------------- */
-let keys = {};
-window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
-window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
-
-canvas.addEventListener('mousedown', (e) => {
-  // shoot target assignment is handled in tick
-  handleFire(e.clientX - canvas.getBoundingClientRect().left, e.clientY - canvas.getBoundingClientRect().top);
-});
-canvas.addEventListener('touchstart', (e) => {
-  // touch shoot: tap with second finger or fire button (we also have on-screen fire)
-  if(e.touches.length >= 2) {
-    let t = e.touches[1];
-    handleFire(t.clientX - canvas.getBoundingClientRect().left, t.clientY - canvas.getBoundingClientRect().top);
-  }
-});
-
-/* -------------------------
-   Touch joystick
-   ------------------------- */
-const joystick = document.getElementById('joystick');
-const joyStick = document.getElementById('joy-stick');
-let joyActive = false;
-let joyCenter = {x: 18 + 70, y: window.innerHeight - 18 - 70}; // approximate center; will update
-function updateJoyCenter(){ 
-  const rect = joystick.getBoundingClientRect();
-  joyCenter = {x: rect.left + rect.width/2, y: rect.top + rect.height/2};
-}
-updateJoyCenter();
-window.addEventListener('resize', updateJoyCenter);
-
-let joyVec = {x:0,y:0};
-joystick.addEventListener('pointerdown', (e)=>{
-  joystick.setPointerCapture(e.pointerId);
-  joyActive = true;
-});
-joystick.addEventListener('pointermove', (e)=>{
-  if(!joyActive) return;
-  const dx = e.clientX - joyCenter.x;
-  const dy = e.clientY - joyCenter.y;
-  const max = 46;
-  const mag = Math.sqrt(dx*dx+dy*dy);
-  let nx = dx, ny = dy;
-  if(mag > max){ nx = dx*(max/mag); ny = dy*(max/mag); }
-  joyStick.style.transform = `translate(${nx}px, ${ny}px)`;
-  joyVec.x = nx / max; joyVec.y = ny / max;
-});
-joystick.addEventListener('pointerup', (e)=>{
-  joyActive = false; joyVec.x=0; joyVec.y=0;
-  joyStick.style.transform = `translate(-50%,-50%)`;
-});
-
-/* fire button */
-const fireBtn = document.getElementById('fire-btn');
-fireBtn.addEventListener('pointerdown', (e)=>{
-  // continuous fire
-  fireBtn.pressed = true;
-});
-fireBtn.addEventListener('pointerup', (e)=>{
-  fireBtn.pressed = false;
-});
-fireBtn.addEventListener('pointercancel', ()=> fireBtn.pressed=false);
-fireBtn.addEventListener('pointerleave', ()=> fireBtn.pressed=false);
-
-/* -------------------------
-   Shooting logic
-   ------------------------- */
-function handleFire(screenX, screenY){
-  if(gameOver) return;
-  if(player.cooldown > 0) return;
-  const angle = Math.atan2(screenY - (canvas.getBoundingClientRect().top + player.y),
-                           screenX - (canvas.getBoundingClientRect().left + player.x));
-  const speed = player.weapon === 'Rifle' ? 12 : 9;
+function fireBullet(dirVec){
+  const mesh = new THREE.Mesh(bulletGeo, bulletMat);
+  const spawnPos = new THREE.Vector3().copy(camera.position);
+  spawnPos.y = 1.6; // eye height
+  mesh.position.copy(spawnPos);
+  scene.add(mesh);
   bullets.push({
-    x: player.x, y: player.y,
-    dx: Math.cos(angle)*speed, dy: Math.sin(angle)*speed,
-    damage: player.damage, ttl: 140
+    mesh,
+    vel: dirVec.clone().multiplyScalar(60),
+    life: 2.5 // seconds
   });
-  player.cooldown = player.fireRate;
-  playShoot();
 }
 
-/* -------------------------
-   Collision helpers for buildings
-   ------------------------- */
-function collideWithBuildings(entity){
-  for(let b of buildings){
-    if(entity.x > b.x && entity.x < b.x + b.w && entity.y > b.y && entity.y < b.y + b.h){
-      // simple push out: move entity toward center
-      // push along smallest overlap
-      let left = entity.x - b.x;
-      let right = (b.x + b.w) - entity.x;
-      let top = entity.y - b.y;
-      let bottom = (b.y + b.h) - entity.y;
-      let min = Math.min(left,right,top,bottom);
-      if(min === left) entity.x = b.x - 4;
-      else if(min === right) entity.x = b.x + b.w + 4;
-      else if(min === top) entity.y = b.y - 4;
-      else entity.y = b.y + b.h + 4;
-    }
-  }
+/* ---------- Loot (hearts or gun) ---------- */
+const loots = [];
+const lootMatHeal = new THREE.MeshStandardMaterial({ color:0x43d95b });
+const lootMatGun = new THREE.MeshStandardMaterial({ color:0x8f72ff });
+function spawnLootAt(x,z,type='heal'){
+  const geo = new THREE.BoxGeometry(0.6,0.6,0.6);
+  const mesh = new THREE.Mesh(geo, type==='heal' ? lootMatHeal : lootMatGun);
+  mesh.position.set(x, 0.3, z);
+  scene.add(mesh);
+  loots.push({mesh, type});
+}
+for(let i=0;i<6;i++){
+  spawnLootAt(THREE.MathUtils.randFloatSpread(100), THREE.MathUtils.randFloatSpread(100), Math.random()<0.6 ? 'heal' : 'gun');
 }
 
-/* -------------------------
-   Enemy AI
-   states: patrol, chase, flee
-   ------------------------- */
-function updateEnemies(){
-  for(let e of enemies){
-    // state transitions
-    let d = Math.hypot(player.x - e.x, player.y - e.y);
-    if(e.hp / e.maxHp < 0.28){
-      e.state = 'flee';
-    } else if(d < e.agroRadius){
-      e.state = 'chase';
-    } else {
-      if(e.state !== 'patrol' && Math.random() < 0.01) e.state = 'patrol';
-    }
+/* ---------- HUD references ---------- */
+const hpEl = document.getElementById('hp');
+const killsEl = document.getElementById('kills');
 
-    if(e.state === 'patrol'){
-      // move toward patrolTarget; if reached pick a new one
-      const tx = e.patrolTarget.x, ty = e.patrolTarget.y;
-      const dx = tx - e.x, dy = ty - e.y;
-      const dist = Math.hypot(dx,dy);
-      if(dist < 16 || Math.random() < 0.004){
-        e.patrolTarget = {x: rand(80,W-80), y: rand(80,H-80)};
-      } else {
-        e.x += (dx/dist) * e.speed * 0.9;
-        e.y += (dy/dist) * e.speed * 0.9;
+/* ---------- Input handling (WASD) ---------- */
+const move = { forward:false, backward:false, left:false, right:false };
+window.addEventListener('keydown', (e)=>{
+  if(e.key === 'w') move.forward = true;
+  if(e.key === 's') move.backward = true;
+  if(e.key === 'a') move.left = true;
+  if(e.key === 'd') move.right = true;
+});
+window.addEventListener('keyup', (e)=>{
+  if(e.key === 'w') move.forward = false;
+  if(e.key === 's') move.backward = false;
+  if(e.key === 'a') move.left = false;
+  if(e.key === 'd') move.right = false;
+});
+
+/* ---------- Mouse shoot ---------- */
+window.addEventListener('mousedown', (e)=>{
+  if(!controls.isLocked) return;
+  // shoot in camera forward direction
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  fireBullet(dir);
+});
+
+/* ---------- Simple collisions helpers ---------- */
+function pointInBox(px, pz, box){ // box by center x,z and dims w,d
+  return (px > box.x - box.w/2 && px < box.x + box.w/2 && pz > box.z - box.d/2 && pz < box.z + box.d/2);
+}
+
+/* ---------- Main update loop ---------- */
+let prevTime = performance.now();
+function animate(){
+  requestAnimationFrame(animate);
+  const time = performance.now();
+  const dt = (time - prevTime)/1000;
+  prevTime = time;
+
+  // player movement from controls: convert camera rotation to movement vector
+  if(controls.isLocked){
+    const forward = (move.forward ? 1 : 0) - (move.backward ? 1 : 0);
+    const strafe = (move.right ? 1 : 0) - (move.left ? 1 : 0);
+    const yaw = controls.getObject().rotation.y;
+    // build direction
+    const dirX = (Math.sin(yaw) * forward) + (Math.cos(yaw) * strafe);
+    const dirZ = (Math.cos(yaw) * forward) - (Math.sin(yaw) * strafe);
+    const v = new THREE.Vector3(dirX,0,dirZ);
+    if(v.lengthSq() > 0.0001) v.normalize().multiplyScalar(player.speed * dt);
+    player.pos.add(v);
+    // collide with buildings (simple pushback)
+    for(const b of buildings){
+      const halfW = b.scale?.x || (b.geometry?.parameters?.width/2) || (b.w/2);
+      const bx = b.mesh? b.mesh.position.x : b.x;
+      const bz = b.mesh? b.mesh.position.z : b.z;
+      // crude: if inside footprint, push out
+      const minX = b.mesh.position.x - b.w/2;
+      const maxX = b.mesh.position.x + b.w/2;
+      const minZ = b.mesh.position.z - b.d/2;
+      const maxZ = b.mesh.position.z + b.d/2;
+      if(player.pos.x > minX && player.pos.x < maxX && player.pos.z > minZ && player.pos.z < maxZ){
+        // push back along move vector
+        player.pos.sub(v);
       }
-    } else if(e.state === 'chase'){
-      let dx = player.x - e.x, dy = player.y - e.y;
-      let dist = Math.hypot(dx,dy) || 1;
-      // occasionally strafe
-      let strafe = Math.sin(Date.now()/300 + e.x*0.01) * 0.6;
-      e.x += (dx/dist) * e.speed + strafe*0.5;
-      e.y += (dy/dist) * e.speed + strafe*0.5;
-    } else if(e.state === 'flee'){
-      let dx = e.x - player.x, dy = e.y - player.y;
-      let dist = Math.hypot(dx,dy) || 1;
-      e.x += (dx/dist) * e.speed * 1.4;
-      e.y += (dy/dist) * e.speed * 1.4;
     }
 
-    // collision with buildings
-    collideWithBuildings(e);
-
-    // constrain
-    e.x = clamp(e.x, 4, W-4);
-    e.y = clamp(e.y, 4, H-4);
+    // sync camera / controls position
+    controls.getObject().position.set(player.pos.x, 1.6, player.pos.z);
   }
-}
 
-/* -------------------------
-   Update bullets, enemies collisions, loots
-   ------------------------- */
-function updateBullets(){
+  // update bullets
   for(let i = bullets.length-1; i >= 0; i--){
-    let b = bullets[i];
-    b.x += b.dx; b.y += b.dy; b.ttl--;
-    // building collision check -> remove
-    if(buildings.some(bu => b.x > bu.x && b.x < bu.x+bu.w && b.y > bu.y && b.y < bu.y+bu.h)){
-      bullets.splice(i,1); continue;
-    }
-    if(b.x < 0 || b.x > W || b.y < 0 || b.y > H || b.ttl <= 0){ bullets.splice(i,1); continue; }
-    // hit enemies
+    const b = bullets[i];
+    b.mesh.position.addScaledVector(b.vel, dt);
+    b.life -= dt;
+    // check against enemies
     for(let j = enemies.length-1; j >= 0; j--){
-      let e = enemies[j];
-      if(Math.abs(b.x - e.x) < e.size && Math.abs(b.y - e.y) < e.size){
-        e.hp -= b.damage;
-        spawnParticles(b.x, b.y, '#ffdd66', 10, 2.2);
-        playHit();
+      const e = enemies[j];
+      const dist = b.mesh.position.distanceTo(e.mesh.position);
+      if(dist < 1.0){
+        // hit
+        e.hp -= 30;
+        scene.remove(b.mesh);
         bullets.splice(i,1);
         if(e.hp <= 0){
-          spawnParticles(e.x, e.y, '#ff6666', 16, 3.2);
-          // on death spawn loot
-          if(Math.random() < 0.6) loots.push({x:e.x + rand(-12,12), y:e.y + rand(-12,12), type: Math.random()<0.6 ? 'heal' : 'rifle', size:12});
+          // kill
+          scene.remove(e.mesh);
           enemies.splice(j,1);
-          player.kills++; player.loot++;
-          document.getElementById('kills').innerText = player.kills;
-          document.getElementById('loot').innerText = player.loot;
+          player.kills++;
+          player.hp = Math.min(100, player.hp + 8); // small heal on kill
+          // spawn loot
+          if(Math.random() < 0.6) spawnLootAt(e.mesh.position.x + Math.random()*2-1, e.mesh.position.z + Math.random()*2-1, Math.random()<0.6?'heal':'gun');
         }
         break;
       }
     }
+    if(b && b.life <= 0){
+      scene.remove(b.mesh);
+      const idx = bullets.indexOf(b);
+      if(idx >= 0) bullets.splice(idx,1);
+    }
   }
-}
 
-/* -------------------------
-   Update loots & player pickup
-   ------------------------- */
-function updateLoots(){
-  for(let i = loots.length-1; i >=0; i--){
-    let l = loots[i];
-    if(Math.abs(player.x - l.x) < (player.size/1.2) && Math.abs(player.y - l.y) < (player.size/1.2)){
-      // pickup
-      if(l.type === 'heal'){ player.hp = Math.min(player.maxHp, player.hp + 28); playLoot(); spawnParticles(l.x,l.y,'#88ff88',10,2.0); }
-      else if(l.type === 'rifle'){ player.weapon = 'Rifle'; player.damage = 42; player.fireRate = 6; document.getElementById('weapon').innerText = 'Rifle'; playLoot(); spawnParticles(l.x,l.y,'#a28dff',12,2.6); }
-      else if(l.type === 'boost'){ player.speed = 6; setTimeout(()=>player.speed = 4.2, 7000); playLoot(); spawnParticles(l.x,l.y,'#ffd86b',12,2.6); }
+  // enemy AI: simple chase if player close, else patrol
+  for(const e of enemies){
+    const dx = player.pos.x - e.mesh.position.x;
+    const dz = player.pos.z - e.mesh.position.z;
+    const dist = Math.hypot(dx,dz);
+    if(dist < 25){
+      // chase
+      e.mesh.position.x += (dx/dist) * e.speed * dt * 10;
+      e.mesh.position.z += (dz/dist) * e.speed * dt * 10;
+    } else {
+      // patrol to target
+      const tx = e.target.x, tz = e.target.z;
+      const pdx = tx - e.mesh.position.x, pdz = tz - e.mesh.position.z;
+      const pdist = Math.hypot(pdx,pdz);
+      if(pdist < 1) { e.target.set(THREE.MathUtils.randFloatSpread(80), 0, THREE.MathUtils.randFloatSpread(80)); }
+      else {
+        e.mesh.position.x += (pdx/pdist) * e.speed * dt * 3;
+        e.mesh.position.z += (pdz/pdist) * e.speed * dt * 3;
+      }
+    }
+    // basic collision with buildings (push out)
+    for(const b of buildings){
+      const minX = b.mesh.position.x - b.w/2;
+      const maxX = b.mesh.position.x + b.w/2;
+      const minZ = b.mesh.position.z - b.d/2;
+      const maxZ = b.mesh.position.z + b.d/2;
+      if(e.mesh.position.x > minX && e.mesh.position.x < maxX && e.mesh.position.z > minZ && e.mesh.position.z < maxZ){
+        // push to outside
+        if(e.mesh.position.x < b.mesh.position.x) e.mesh.position.x = minX - 1;
+        else e.mesh.position.x = maxX + 1;
+      }
+    }
+  }
+
+  // pickup loot
+  for(let i = loots.length-1; i >= 0; i--){
+    const l = loots[i];
+    const d = Math.hypot(player.pos.x - l.mesh.position.x, player.pos.z - l.mesh.position.z);
+    if(d < 1.2){
+      if(l.type === 'heal'){ player.hp = Math.min(100, player.hp + 30); }
+      else { /* gun */ player.speed += 1; setTimeout(()=>player.speed -= 1, 5000); }
+      scene.remove(l.mesh);
       loots.splice(i,1);
     }
   }
-}
 
-/* -------------------------
-   Update particles
-   ------------------------- */
-function updateParticles(){
-  for(let i = particles.length-1; i>=0; i--){
-    let p = particles[i];
-    p.x += p.vx; p.y += p.vy; p.life--;
-    p.vx *= 0.98; p.vy *= 0.98; p.size *= 0.993;
-    if(p.life <= 0) particles.splice(i,1);
-  }
-}
+  // shrink ring slowly
+  ringRadius -= 0.02 * dt * 60;
+  if(ringRadius < 8) ringRadius = 8;
+  // rebuild ring geometry (cheap)
+  ringMesh.geometry.dispose();
+  ringMesh.geometry = new THREE.RingGeometry(ringRadius-0.3, ringRadius, 128);
 
-/* -------------------------
-   Ring shrink & damage
-   ------------------------- */
-function updateRing(dt){
-  ring.tick += dt;
-  // accelerate shrink slightly over time
-  ring.radius -= ring.shrinkRate;
-  if(ring.radius < 60) ring.radius = 60;
-  // ring damage if outside
-  const d = Math.hypot(player.x - ring.x, player.y - ring.y);
-  if(d > ring.radius){
-    player.hp -= 0.28 * (dt/16.66);
-  }
-}
-
-/* -------------------------
-   Player movement & collisions
-   ------------------------- */
-function updatePlayer(dt){
-  // keyboard + joystick
-  let vx = 0, vy = 0;
-  if(keys['w'] || keys['arrowup']) vy -= 1;
-  if(keys['s'] || keys['arrowdown']) vy += 1;
-  if(keys['a'] || keys['arrowleft']) vx -= 1;
-  if(keys['d'] || keys['arrowright']) vx += 1;
-  // joystick influence
-  vx += joyVec.x; vy += joyVec.y;
-  // normalize
-  const mag = Math.hypot(vx,vy);
-  if(mag > 0.001){ vx = vx / mag; vy = vy / mag; }
-  player.x += vx * player.speed * (dt/16.66);
-  player.y += vy * player.speed * (dt/16.66);
-  collideWithBuildings(player);
-  player.x = clamp(player.x, 6, W-6);
-  player.y = clamp(player.y, 6, H-6);
-
-  // auto-fire for touch fire button
-  if(fireBtn.pressed){
-    if(player.cooldown <= 0) handleFire(player.x + 30, player.y);
+  // if player outside ring -> damage
+  if(Math.hypot(player.pos.x, player.pos.z) > ringRadius + 1.2){
+    player.hp -= 8 * dt;
   }
 
-  // cooldown decrease
-  if(player.cooldown > 0) player.cooldown -= 1 * (dt/16.66);
-  if(player.cooldown < 0) player.cooldown = 0;
-}
+  // sync HUD
+  hpEl.innerText = Math.max(0, Math.floor(player.hp));
+  killsEl.innerText = player.kills;
 
-/* -------------------------
-   Draw functions
-   ------------------------- */
-function drawScene(){
-  // ground
-  ctx.fillStyle = '#3ea64a';
-  ctx.fillRect(0,0,W,H);
+  // spawn occasional enemies / loot while playing
+  if(Math.random() < 0.003){ spawnEnemy(); }
+  if(Math.random() < 0.002){ spawnLootAt(THREE.MathUtils.randFloatSpread(120), THREE.MathUtils.randFloatSpread(120), Math.random()<0.6?'heal':'gun'); }
 
-  // buildings
-  for(let b of buildings){
-    ctx.fillStyle = '#6b3f2f';
-    ctx.fillRect(b.x, b.y, b.w, b.h);
-    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-    ctx.strokeRect(b.x,b.y,b.w,b.h);
-  }
-
-  // ring overlay: dim outside
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0,0,W,H);
-  ctx.arc(ring.x,ring.y,ring.radius,0,Math.PI*2,true);
-  ctx.fillStyle = 'rgba(0,0,0,0.18)';
-  ctx.fill();
-  ctx.restore();
-
-  // loots
-  for(let l of loots){
-    if(l.type === 'heal') ctx.fillStyle = '#43d95b';
-    else if(l.type === 'rifle') ctx.fillStyle = '#8f72ff';
-    else ctx.fillStyle = '#ffd86b';
-    ctx.fillRect(l.x - l.size/2, l.y - l.size/2, l.size, l.size);
-    ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.strokeRect(l.x - l.size/2, l.y - l.size/2, l.size, l.size);
-  }
-
-  // enemies
-  for(let e of enemies){
-    // health bar
-    const hpRatio = clamp(e.hp / e.maxHp, 0, 1);
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(e.x - e.size/2, e.y - e.size/2 - 8, e.size, 5);
-    ctx.fillStyle = '#ff6666';
-    ctx.fillRect(e.x - e.size/2, e.y - e.size/2 - 8, e.size * hpRatio, 5);
-
-    // body
-    ctx.fillStyle = e.state === 'flee' ? '#ff9a9a' : '#d33';
-    ctx.fillRect(e.x - e.size/2, e.y - e.size/2, e.size, e.size);
-  }
-
-  // particles
-  for(let p of particles){
-    ctx.fillStyle = p.color || '#fff';
-    ctx.globalAlpha = clamp(p.life/42, 0, 1);
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  }
-
-  // bullets
-  for(let b of bullets){
-    ctx.fillStyle = '#ffe36e';
-    ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
-  }
-
-  // player
-  ctx.save();
-  ctx.fillStyle = '#2a7cff';
-  ctx.fillRect(player.x - player.size/2, player.y - player.size/2, player.size, player.size);
-  // player HP ring
-  ctx.beginPath();
-  ctx.arc(player.x, player.y, player.size, 0, Math.PI*2);
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.restore();
-
-  // ring border
-  ctx.beginPath();
-  ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI*2);
-  ctx.strokeStyle = '#ff4444';
-  ctx.lineWidth = 4;
-  ctx.stroke();
-
-  // center marker
-  ctx.fillStyle = 'rgba(0,0,0,0.08)';
-  ctx.beginPath(); ctx.arc(ring.x, ring.y, 6,0,Math.PI*2); ctx.fill();
-}
-
-/* -------------------------
-   Minimap draw
-   ------------------------- */
-function drawMinimap(){
-  const mcw = miniCanvas.width, mch = miniCanvas.height;
-  mctx.clearRect(0,0,mcw,mch);
-  // scale world -> mini
-  const pad = 8;
-  const scale = Math.min((mcw-pad*2)/W, (mch-pad*2)/H);
-  // background
-  mctx.fillStyle = 'rgba(0,0,0,0.06)'; mctx.fillRect(0,0,mcw,mch);
-
-  function wx(x){ return pad + x*scale; }
-  function wy(y){ return pad + y*scale; }
-
-  // buildings
-  mctx.fillStyle = '#6b3f2f';
-  for(let b of buildings){
-    mctx.fillRect(wx(b.x), wy(b.y), b.w*scale, b.h*scale);
-  }
-  // loots
-  for(let l of loots){
-    mctx.fillStyle = l.type === 'heal' ? '#43d95b' : (l.type === 'rifle' ? '#8f72ff' : '#ffd86b');
-    mctx.fillRect(wx(l.x)-2, wy(l.y)-2, 4, 4);
-  }
-  // enemies
-  for(let e of enemies){
-    mctx.fillStyle = '#d33';
-    mctx.fillRect(wx(e.x)-2.5, wy(e.y)-2.5, 5,5);
-  }
-  // player
-  mctx.fillStyle = '#2a7cff';
-  mctx.beginPath();
-  mctx.arc(wx(player.x), wy(player.y), 5, 0, Math.PI*2);
-  mctx.fill();
-
-  // ring
-  mctx.strokeStyle = 'rgba(255,68,68,0.9)';
-  mctx.lineWidth = 1.5;
-  mctx.beginPath();
-  mctx.arc(wx(ring.x), wy(ring.y), ring.radius*scale, 0, Math.PI*2);
-  mctx.stroke();
-}
-
-/* -------------------------
-   HUD update
-   ------------------------- */
-function updateHUD(){
-  document.getElementById('hp').innerText = Math.max(0, Math.floor(player.hp));
-  document.getElementById('kills').innerText = player.kills;
-  document.getElementById('loot').innerText = player.loot;
-  document.getElementById('weapon').innerText = player.weapon;
-  // scoreboard
-  document.getElementById('scoreboardPanel').innerHTML = `<strong>Players</strong><div style="opacity:0.9">You</div><div style="margin-left:8px">Kills: ${player.kills} • Loot: ${player.loot}</div>`;
-}
-
-/* -------------------------
-   Main loop
-   ------------------------- */
-function tick(ts){
-  if(!lastTimestamp) lastTimestamp = ts;
-  let dt = ts - lastTimestamp; // ms
-  lastTimestamp = ts;
-  if(gameOver) return;
-
-  // Limit dt
-  if(dt > 60) dt = 60;
-
-  // movement & logic
-  updatePlayer(dt);
-  updateEnemies();
-  updateBullets();
-  updateLoots();
-  updateParticles();
-  updateRing(dt);
-
-  // Draw
-  drawScene();
-  drawMinimap();
-  updateHUD();
-
-  // Check player died
-  if(player.hp <= 0 && !gameOver){
-    gameOver = true;
+  // death
+  if(player.hp <= 0){
+    // game over
     playGameOver();
-    setTimeout(()=>{ alert('Game Over — Kills: ' + player.kills); location.reload(); }, 200);
+    controls.unlock();
+    alert('Game Over — Kills: ' + player.kills);
+    window.location.reload();
     return;
   }
 
-  requestAnimationFrame(tick);
+  renderer.render(scene, camera);
 }
+animate();
 
-/* -------------------------
-   Startup
-   ------------------------- */
-initMap();
-updateHUD();
-requestAnimationFrame(tick);
+/* ---------- simple audio feedback (beeps) ---------- */
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioCtx();
+function beep(freq, dur=0.06, gain=0.06, type='sine'){
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type;
+  o.frequency.value = freq;
+  g.gain.value = gain;
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start();
+  o.stop(audioCtx.currentTime + dur);
+}
+function playGameOver(){ beep(220,0.2,0.12,'sine'); }
 
-/* -------------------------
-   Periodic spawns to keep it lively
-   ------------------------- */
-setInterval(()=>{ if(Math.random() < 0.85) spawnEnemy(); if(Math.random()<0.7) spawnLoot(); }, 4200);
+/* ---------- resize handling ---------- */
+window.addEventListener('resize', ()=>{
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
 
+/* ---------- friendly note ---------- */
+console.log('Mini 3D BR ready — test with WASD + click to shoot. For best experience run via localhost or GitHub Pages.');
 </script>
 </body>
 </html>
