@@ -24,7 +24,6 @@ canvas{display:block;}
   <div class="slot" data-slot="2">Boost</div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/js/loaders/GLTFLoader.js"></script>
 <script>
 // --- Szene & Kamera ---
 const scene = new THREE.Scene();
@@ -94,7 +93,7 @@ document.addEventListener('mousedown', e=>{
   scene.add(mesh); bullets.push({mesh,vel:dir.clone().multiplyScalar(60),life:2.5});
 });
 
-// --- NPCs laden als Boxen ---
+// --- NPCs als Boxen ---
 const enemies = [];
 const enemyBullets = [];
 for(let i=0;i<5;i++){
@@ -106,7 +105,6 @@ for(let i=0;i<5;i++){
   scene.add(mesh);
   enemies.push({mesh,hp:100,shootCooldown:Math.random()*2});
 }
-
 
 // --- Loot ---
 const loots=[]; const lootMatHeal=new THREE.MeshStandardMaterial({color:0x43d95b});
@@ -204,4 +202,3 @@ window.addEventListener('resize', ()=>{
 </script>
 </body>
 </html>
-
