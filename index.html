@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mini Fortnite NPC Edition</title>
+<title>Mini Fortnite Realistic</title>
 <style>
 html,body{margin:0;padding:0;overflow:hidden;height:100%;background:#111;}
 canvas{display:block;}
@@ -61,7 +61,6 @@ scene.add(gunMesh);
 // --- Controls ---
 let mouseX=0,mouseY=0;
 document.addEventListener('mousemove', e=>{ mouseX = e.movementX*0.002; mouseY = e.movementY*0.002; });
-
 const move={forward:false,backward:false,left:false,right:false};
 document.addEventListener('keydown',e=>{
   if(e.key==='w') move.forward=true;
@@ -77,7 +76,7 @@ document.addEventListener('keyup',e=>{
 });
 
 // --- Inventory ---
-let activeSlot = 1; // Standard auf Gun
+let activeSlot = 1; 
 const slots = document.querySelectorAll('.slot');
 slots.forEach((slot,i)=>slot.addEventListener('click',()=>{activeSlot=i; updateInventory();}));
 function updateInventory(){
@@ -151,15 +150,10 @@ function animate(){
   // Enemy logic + shooting
   enemies.forEach(e=>{
     if(e.hp<=0) return;
-    // Verfolge Spieler
     const dx = player.pos.x - e.mesh.position.x;
     const dz = player.pos.z - e.mesh.position.z;
     const dist = Math.hypot(dx,dz);
-    if(dist>2){
-      e.mesh.position.x += dx/dist*dt*2;
-      e.mesh.position.z += dz/dist*dt*2;
-    }
-    // Schießen
+    if(dist>2){ e.mesh.position.x += dx/dist*dt*2; e.mesh.position.z += dz/dist*dt*2; }
     e.shootCooldown -= dt;
     if(e.shootCooldown <=0 && dist<20){
       const dir = new THREE.Vector3(dx,0,dz).normalize();
