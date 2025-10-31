@@ -94,19 +94,19 @@ document.addEventListener('mousedown', e=>{
   scene.add(mesh); bullets.push({mesh,vel:dir.clone().multiplyScalar(60),life:2.5});
 });
 
-// --- NPCs laden ---
-const loader = new THREE.GLTFLoader();
+// --- NPCs laden als Boxen ---
 const enemies = [];
 const enemyBullets = [];
 for(let i=0;i<5;i++){
-  loader.load('https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb', gltf=>{
-    const mesh = gltf.scene;
-    mesh.scale.set(0.5,0.5,0.5);
-    mesh.position.set(Math.random()*100-50,0,Math.random()*100-50);
-    scene.add(mesh);
-    enemies.push({mesh,hp:100,shootCooldown:Math.random()*2});
-  });
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(1,2,1),
+    new THREE.MeshStandardMaterial({color:0xff0000})
+  );
+  mesh.position.set(Math.random()*100-50,1,Math.random()*100-50);
+  scene.add(mesh);
+  enemies.push({mesh,hp:100,shootCooldown:Math.random()*2});
 }
+
 
 // --- Loot ---
 const loots=[]; const lootMatHeal=new THREE.MeshStandardMaterial({color:0x43d95b});
