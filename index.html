@@ -3,142 +3,135 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mini Fortnite Battle Royale</title>
+<title>Mini Fortnite BR</title>
 <style>
-  body { margin: 0; background: #87ceeb; overflow: hidden; font-family: sans-serif;}
-  #gameCanvas { background: #4CAF50; display: block; margin: auto; border: 2px solid #333; }
-  #info { color: white; text-align: center; margin-top: 10px; }
+body { margin:0; background:#87ceeb; font-family:sans-serif; overflow:hidden;}
+#gameCanvas { background:#4CAF50; display:block; margin:auto; border:2px solid #333;}
+#info { color:white; text-align:center; margin-top:5px; font-size:18px;}
 </style>
 </head>
 <body>
 <canvas id="gameCanvas" width="800" height="600"></canvas>
-<div id="info">HP: <span id="hp">100</span> | Kills: <span id="kills">0</span></div>
+<div id="info">HP: <span id="hp">100</span> | Kills: <span id="kills">0</span> | Loot: <span id="loot">0</span></div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-let player = {x: 400, y: 300, size: 20, speed: 5, hp: 100};
-let bullets = [];
-let enemies = [];
-let kills = 0;
+// Spieler
+let player = {x:400, y:300, size:20, speed:5, hp:100, loot:0};
 
-// Battle-Royale Ring
-let ring = {x: 400, y: 300, radius: 350, shrinkRate: 0.02};
-
-// Steuerung
+// Eingaben
 let keys = {};
-document.addEventListener('keydown', e => keys[e.key] = true);
-document.addEventListener('keyup', e => keys[e.key] = false);
+document.addEventListener('keydown', e=>keys[e.key]=true);
+document.addEventListener('keyup', e=>keys[e.key]=false);
 
-// Schießen
-document.addEventListener('click', e => {
-    let angle = Math.atan2(e.clientY - canvas.getBoundingClientRect().top - player.y,
-                           e.clientX - canvas.getBoundingClientRect().left - player.x);
-    bullets.push({x: player.x, y: player.y, dx: Math.cos(angle)*10, dy: Math.sin(angle)*10});
+// Schüsse
+let bullets=[];
+document.addEventListener('click', e=>{
+    let angle = Math.atan2(e.clientY-canvas.getBoundingClientRect().top-player.y,
+                           e.clientX-canvas.getBoundingClientRect().left-player.x);
+    bullets.push({x:player.x,y:player.y,dx:Math.cos(angle)*10,dy:Math.sin(angle)*10});
 });
 
-// Gegner generieren
-function spawnEnemy() {
-    let x = Math.random() * canvas.width;
-    let y = Math.random() * canvas.height;
-    enemies.push({x, y, size: 20, hp: 50, speed: 1 + Math.random()*2});
+// Gegner
+let enemies=[];
+function spawnEnemy(){ 
+    let x=Math.random()*canvas.width; 
+    let y=Math.random()*canvas.height;
+    enemies.push({x,y,size:20,hp:50,speed:1+Math.random()*2}); 
 }
+for(let i=0;i<10;i++) spawnEnemy();
+setInterval(spawnEnemy,5000);
 
-// Gegner bewegen
-function moveEnemies() {
-    enemies.forEach(e => {
-        let dx = player.x - e.x;
-        let dy = player.y - e.y;
-        let dist = Math.sqrt(dx*dx + dy*dy);
-        e.x += (dx/dist)*e.speed;
-        e.y += (dy/dist)*e.speed;
+// Loot
+let loots=[];
+function spawnLoot(){
+    let x=Math.random()*canvas.width;
+    let y=Math.random()*canvas.height;
+    loots.push({x,y,size:10,type:'heal'});
+}
+setInterval(spawnLoot,8000);
+
+// Ring
+let ring = {x:400, y:300, radius:350, shrinkRate:0.01};
+
+// Spiel-Loop
+function gameLoop(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // Ring zeichnen
+    ctx.beginPath();
+    ctx.arc(ring.x,ring.y,ring.radius,0,Math.PI*2);
+    ctx.strokeStyle='red'; ctx.lineWidth=5;
+    ctx.stroke();
+    ring.radius -= ring.shrinkRate;
+    if(ring.radius<50) ring.radius=50;
+
+    // Spieler bewegen
+    if(keys['w']||keys['ArrowUp']) player.y-=player.speed;
+    if(keys['s']||keys['ArrowDown']) player.y+=player.speed;
+    if(keys['a']||keys['ArrowLeft']) player.x-=player.speed;
+    if(keys['d']||keys['ArrowRight']) player.x+=player.speed;
+
+    // Spieler zeichnen
+    ctx.fillStyle='blue';
+    ctx.fillRect(player.x-player.size/2,player.y-player.size/2,player.size,player.size);
+
+    // Bullets
+    bullets.forEach((b,i)=>{
+        b.x+=b.dx; b.y+=b.dy;
+        ctx.fillStyle='yellow'; ctx.fillRect(b.x-2,b.y-2,4,4);
+        if(b.x<0||b.x>canvas.width||b.y<0||b.y>canvas.height) bullets.splice(i,1);
     });
-}
 
-// Kollisionen
-function checkCollisions() {
-    // Bullets vs enemies
-    bullets.forEach((b, i) => {
-        enemies.forEach((e, j) => {
-            if (Math.abs(b.x - e.x) < e.size && Math.abs(b.y - e.y) < e.size) {
-                e.hp -= 25;
-                bullets.splice(i,1);
-                if (e.hp <= 0) {
-                    enemies.splice(j,1);
-                    kills++;
-                    document.getElementById('kills').innerText = kills;
-                }
+    // Gegner bewegen & zeichnen
+    enemies.forEach((e,j)=>{
+        let dx=player.x-e.x; let dy=player.y-e.y;
+        let dist=Math.sqrt(dx*dx+dy*dy);
+        e.x+=(dx/dist)*e.speed; e.y+=(dy/dist)*e.speed;
+        ctx.fillStyle='red'; ctx.fillRect(e.x-e.size/2,e.y-e.size/2,e.size,e.size);
+    });
+
+    // Loot zeichnen
+    loots.forEach((l,i)=>{
+        ctx.fillStyle='orange'; ctx.fillRect(l.x-l.size/2,l.y-l.size/2,l.size,l.size);
+    });
+
+    // Kollisionen
+    bullets.forEach((b,bi)=>{
+        enemies.forEach((e,ei)=>{
+            if(Math.abs(b.x-e.x)<e.size && Math.abs(b.y-e.y)<e.size){
+                e.hp-=25; bullets.splice(bi,1);
+                if(e.hp<=0){ enemies.splice(ei,1); player.loot++; document.getElementById('kills').innerText=player.loot;}
             }
         });
     });
-    // Player vs enemies
-    enemies.forEach(e => {
-        if (Math.abs(player.x - e.x) < e.size && Math.abs(player.y - e.y) < e.size) {
-            player.hp -= 0.5;
-            if (player.hp <= 0) {
-                alert('Game Over! Kills: ' + kills);
-                location.reload();
-            }
-            document.getElementById('hp').innerText = Math.floor(player.hp);
+
+    enemies.forEach(e=>{
+        if(Math.abs(player.x-e.x)<e.size && Math.abs(player.y-e.y)<e.size){
+            player.hp-=0.5;
         }
     });
-    // Player outside ring
-    let dx = player.x - ring.x;
-    let dy = player.y - ring.y;
-    let dist = Math.sqrt(dx*dx + dy*dy);
-    if (dist > ring.radius) {
-        player.hp -= 0.3;
-        document.getElementById('hp').innerText = Math.floor(player.hp);
-    }
-}
 
-// Spiel-Loop
-function gameLoop() {
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    
-    // Ring
-    ctx.beginPath();
-    ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI*2);
-    ctx.strokeStyle = 'red';
-    ctx.lineWidth = 5;
-    ctx.stroke();
-    ring.radius -= ring.shrinkRate;
-    if (ring.radius < 50) ring.radius = 50;
-    
-    // Spieler bewegen
-    if (keys['w'] || keys['ArrowUp']) player.y -= player.speed;
-    if (keys['s'] || keys['ArrowDown']) player.y += player.speed;
-    if (keys['a'] || keys['ArrowLeft']) player.x -= player.speed;
-    if (keys['d'] || keys['ArrowRight']) player.x += player.speed;
-    
-    // Spieler zeichnen
-    ctx.fillStyle = 'blue';
-    ctx.fillRect(player.x-player.size/2, player.y-player.size/2, player.size, player.size);
-    
-    // Bullets zeichnen
-    bullets.forEach((b,i) => {
-        b.x += b.dx; b.y += b.dy;
-        ctx.fillStyle = 'yellow';
-        ctx.fillRect(b.x-2,b.y-2,4,4);
-        if (b.x<0 || b.x>canvas.width || b.y<0 || b.y>canvas.height) bullets.splice(i,1);
+    loots.forEach((l,li)=>{
+        if(Math.abs(player.x-l.x)<l.size && Math.abs(player.y-l.y)<l.size){
+            player.hp+=20; if(player.hp>100) player.hp=100;
+            loots.splice(li,1);
+        }
     });
-    
-    // Gegner zeichnen
-    moveEnemies();
-    enemies.forEach(e => {
-        ctx.fillStyle = 'red';
-        ctx.fillRect(e.x-e.size/2, e.y-e.size/2, e.size, e.size);
-    });
-    
-    checkCollisions();
-    
+
+    // Ring Schaden
+    let dx=player.x-ring.x; let dy=player.y-ring.y; let dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist>ring.radius){ player.hp-=0.3; }
+
+    document.getElementById('hp').innerText=Math.floor(player.hp);
+    document.getElementById('loot').innerText=player.loot;
+
+    if(player.hp<=0){ alert('Game Over! Loot: '+player.loot); location.reload(); }
+
     requestAnimationFrame(gameLoop);
 }
-
-// Start
-for(let i=0;i<5;i++) spawnEnemy();
-setInterval(spawnEnemy, 5000);
 
 gameLoop();
 </script>
