@@ -1,203 +1,82 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mini Fortnite Realistic</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini Geometry Dash</title>
 <style>
-html,body{margin:0;padding:0;overflow:hidden;height:100%;background:#111;}
-canvas{display:block;}
-#overlay{position:fixed;top:10px;left:10px;color:#fff;font-family:sans-serif;z-index:10;}
-#overlay div{background:rgba(0,0,0,0.6);padding:6px 8px;margin-bottom:6px;border-radius:6px;}
-#inventory{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);display:flex;gap:6px;}
-.slot{width:50px;height:50px;background:rgba(0,0,0,0.6);border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;}
-.slot.active{border:2px solid #2d9cdb;}
+  body{margin:0;background:#222;overflow:hidden;font-family:sans-serif;}
+  canvas{display:block;background:#222;}
+  #score{position:fixed;top:10px;left:10px;color:#fff;font-size:24px;}
 </style>
 </head>
 <body>
-<div id="overlay">
-  <div>HP: <span id="hp">100</span> Kills: <span id="kills">0</span></div>
-</div>
-<div id="inventory">
-  <div class="slot active" data-slot="0">Heal</div>
-  <div class="slot" data-slot="1">Gun</div>
-  <div class="slot" data-slot="2">Boost</div>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+<div id="score">Score: 0</div>
+<canvas id="game"></canvas>
 <script>
-// --- Szene & Kamera ---
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
-camera.position.set(0,1.6,0);
-const renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-// --- Licht ---
-const hemi = new THREE.HemisphereLight(0xffffff,0x444444,0.9); hemi.position.set(0,200,0); scene.add(hemi);
-const dir = new THREE.DirectionalLight(0xffffff,0.6); dir.position.set(-100,100,-100); scene.add(dir);
-
-// --- Boden ---
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(160,160), new THREE.MeshStandardMaterial({color:0x317a31}));
-ground.rotation.x = -Math.PI/2; scene.add(ground);
-
-// --- Ring ---
-let ringRadius = 70;
-const ringMat = new THREE.MeshBasicMaterial({color:0xff4444,side:THREE.DoubleSide,transparent:true,opacity:0.6});
-let ringMesh = new THREE.Mesh(new THREE.RingGeometry(ringRadius-0.8, ringRadius,128), ringMat);
-ringMesh.rotation.x = -Math.PI/2; scene.add(ringMesh);
-
-// --- Player ---
-const player = {pos:new THREE.Vector3(0,0,0),speed:6.2,hp:100,kills:0};
-
-// --- Weapon (First-Person) ---
-const gunGeo = new THREE.BoxGeometry(0.2,0.1,0.6);
-const gunMat = new THREE.MeshBasicMaterial({color:0x3333ff});
-const gunMesh = new THREE.Mesh(gunGeo,gunMat);
-scene.add(gunMesh);
+let player = {x:100,y:canvas.height-50,w:50,h:50,vy:0,jump:15,gravity:0.8,onGround:true};
+let obstacles = [];
+let speed = 6;
+let score = 0;
+let gameOver = false;
 
 // --- Controls ---
-let mouseX=0,mouseY=0;
-document.addEventListener('mousemove', e=>{ mouseX = e.movementX*0.002; mouseY = e.movementY*0.002; });
-const move={forward:false,backward:false,left:false,right:false};
 document.addEventListener('keydown',e=>{
-  if(e.key==='w') move.forward=true;
-  if(e.key==='s') move.backward=true;
-  if(e.key==='a') move.left=true;
-  if(e.key==='d') move.right=true;
+  if(e.code==='Space'){ jump(); }
 });
-document.addEventListener('keyup',e=>{
-  if(e.key==='w') move.forward=false;
-  if(e.key==='s') move.backward=false;
-  if(e.key==='a') move.left=false;
-  if(e.key==='d') move.right=false;
-});
-
-// --- Inventory ---
-let activeSlot = 1; 
-const slots = document.querySelectorAll('.slot');
-slots.forEach((slot,i)=>slot.addEventListener('click',()=>{activeSlot=i; updateInventory();}));
-function updateInventory(){
-  slots.forEach(s=>s.classList.remove('active'));
-  slots[activeSlot].classList.add('active');
+document.addEventListener('mousedown', jump);
+function jump(){
+  if(player.onGround){ player.vy=-player.jump; player.onGround=false; }
 }
 
-// --- Bullets ---
-const bullets=[]; const bulletGeo=new THREE.SphereGeometry(0.08,8,8); const bulletMat=new THREE.MeshBasicMaterial({color:0xffea6a});
-document.addEventListener('mousedown', e=>{
-  if(activeSlot!==1) return;
-  const dir = new THREE.Vector3(0,0,-1).applyEuler(camera.rotation);
-  const mesh = new THREE.Mesh(bulletGeo, bulletMat);
-  mesh.position.copy(camera.position).add(new THREE.Vector3(0,0,-0.3).applyEuler(camera.rotation));
-  scene.add(mesh); bullets.push({mesh,vel:dir.clone().multiplyScalar(60),life:2.5});
-});
-
-// --- NPCs als Boxen ---
-const enemies = [];
-const enemyBullets = [];
-for(let i=0;i<5;i++){
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(1,2,1),
-    new THREE.MeshStandardMaterial({color:0xff0000})
-  );
-  mesh.position.set(Math.random()*100-50,1,Math.random()*100-50);
-  scene.add(mesh);
-  enemies.push({mesh,hp:100,shootCooldown:Math.random()*2});
+// --- Obstacles ---
+function addObstacle(){
+  const h = Math.random()*100 + 50;
+  obstacles.push({x:canvas.width, y:canvas.height-h, w:50, h:h});
 }
 
-// --- Loot ---
-const loots=[]; const lootMatHeal=new THREE.MeshStandardMaterial({color:0x43d95b});
-for(let i=0;i<6;i++){
-  const geo=new THREE.BoxGeometry(0.6,0.6,0.6);
-  const mesh=new THREE.Mesh(geo,lootMatHeal);
-  mesh.position.set(Math.random()*100-50,0.3,Math.random()*100-50);
-  scene.add(mesh); loots.push({mesh,type:'heal',pulse:0});
-}
+// --- Game Loop ---
+function loop(){
+  if(gameOver){ ctx.fillStyle="#fff"; ctx.font="48px sans-serif"; ctx.fillText("Game Over! Score: "+score, canvas.width/2-200,canvas.height/2); return; }
 
-// --- HUD ---
-const hpEl=document.getElementById('hp'); const killsEl=document.getElementById('kills');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-// --- Animate ---
-let prevTime=performance.now();
-function animate(){
-  requestAnimationFrame(animate);
-  const time=performance.now(); const dt=(time-prevTime)/1000; prevTime=time;
+  // Player physics
+  player.vy += player.gravity;
+  player.y += player.vy;
+  if(player.y + player.h >= canvas.height){ player.y = canvas.height-player.h; player.vy=0; player.onGround=true; }
 
-  // Bewegung Player
-  const forward=(move.forward?1:0)-(move.backward?1:0);
-  const strafe=(move.right?1:0)-(move.left?1:0);
-  const dx=Math.sin(camera.rotation.y)*forward+Math.cos(camera.rotation.y)*strafe;
-  const dz=Math.cos(camera.rotation.y)*forward-Math.sin(camera.rotation.y)*strafe;
-  player.pos.x+=dx*player.speed*dt; player.pos.z+=dz*player.speed*dt;
-  camera.rotation.y-=mouseX; camera.rotation.x=Math.max(-Math.PI/2,Math.min(Math.PI/2,camera.rotation.x-mouseY));
-  camera.position.set(player.pos.x,1.6,player.pos.z);
-  const gunOffset = new THREE.Vector3(0,-0.1,-0.5).applyEuler(camera.rotation);
-  gunMesh.position.copy(camera.position).add(gunOffset); gunMesh.rotation.copy(camera.rotation);
-  mouseX=0; mouseY=0;
+  // Draw player
+  ctx.fillStyle = "#2d9cdb";
+  ctx.fillRect(player.x,player.y,player.w,player.h);
 
-  // Player bullets
-  for(let i=bullets.length-1;i>=0;i--){
-    const b=bullets[i]; b.mesh.position.addScaledVector(b.vel,dt); b.life-=dt;
-    if(b.life<=0){ scene.remove(b.mesh); bullets.splice(i,1); continue; }
-    for(const e of enemies){
-      if(e.mesh.position.distanceTo(b.mesh.position)<1.5){ e.hp-=25; scene.remove(b.mesh); bullets.splice(i,1); }
-    }
+  // Obstacles
+  if(Math.random()<0.02){ addObstacle(); }
+  for(let i=obstacles.length-1;i>=0;i--){
+    const o = obstacles[i];
+    o.x -= speed;
+    ctx.fillStyle="#ff4444";
+    ctx.fillRect(o.x,o.y,o.w,o.h);
+
+    // Collision
+    if(player.x < o.x+o.w && player.x+player.w>o.x && player.y<o.y+o.h && player.y+player.h>o.y){ gameOver=true; }
+
+    if(o.x+o.w<0){ obstacles.splice(i,1); score++; document.getElementById('score').innerText="Score: "+score; }
   }
 
-  // Enemy logic + shooting
-  enemies.forEach(e=>{
-    if(e.hp<=0) return;
-    const dx = player.pos.x - e.mesh.position.x;
-    const dz = player.pos.z - e.mesh.position.z;
-    const dist = Math.hypot(dx,dz);
-    if(dist>2){ e.mesh.position.x += dx/dist*dt*2; e.mesh.position.z += dz/dist*dt*2; }
-    e.shootCooldown -= dt;
-    if(e.shootCooldown <=0 && dist<20){
-      const dir = new THREE.Vector3(dx,0,dz).normalize();
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.08,8,8), new THREE.MeshBasicMaterial({color:0xff0000}));
-      mesh.position.copy(e.mesh.position).add(new THREE.Vector3(0,1,0));
-      scene.add(mesh);
-      enemyBullets.push({mesh,vel:dir.clone().multiplyScalar(40),life:2.5});
-      e.shootCooldown = 2 + Math.random();
-    }
-  });
-
-  // Enemy bullets
-  for(let i=enemyBullets.length-1;i>=0;i--){
-    const b = enemyBullets[i];
-    b.mesh.position.addScaledVector(b.vel,dt);
-    b.life-=dt;
-    if(b.life<=0){ scene.remove(b.mesh); enemyBullets.splice(i,1); continue; }
-    if(b.mesh.position.distanceTo(camera.position)<1){ player.hp-=15; scene.remove(b.mesh); enemyBullets.splice(i,1);}
-  }
-
-  // Ring shrink
-  ringRadius-=0.005; if(ringRadius<5) ringRadius=5;
-  ringMesh.geometry.dispose(); ringMesh.geometry=new THREE.RingGeometry(ringRadius-0.8, ringRadius,128);
-  if(Math.hypot(player.pos.x,player.pos.z)>ringRadius){ player.hp-=10*dt; document.getElementById('overlay').style.background='rgba(255,0,0,0.2)'; }
-  else{ document.getElementById('overlay').style.background='transparent'; }
-
-  // Loot pickup
-  loots.forEach((l,i)=>{
-    l.pulse += dt*2; l.mesh.scale.setScalar(0.8+0.2*Math.sin(l.pulse));
-    if(player.pos.distanceTo(l.mesh.position)<1.5){ if(l.type==='heal') player.hp=Math.min(100,player.hp+30); scene.remove(l.mesh); loots.splice(i,1);}
-  });
-
-  // HUD
-  hpEl.innerText=Math.floor(player.hp); killsEl.innerText=enemies.filter(e=>e.hp<=0).length;
-
-  if(player.hp<=0){ alert('Game Over!'); window.location.reload(); return; }
-
-  renderer.render(scene,camera);
+  requestAnimationFrame(loop);
 }
-animate();
+loop();
 
 // --- Resize ---
 window.addEventListener('resize', ()=>{
-  camera.aspect=window.innerWidth/window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 });
 </script>
 </body>
