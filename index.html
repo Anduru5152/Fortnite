@@ -3,22 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mini 3D Fortnite BR</title>
+<title>Mini Fortnite 3D</title>
 <style>
-  html,body{margin:0;padding:0;overflow:hidden;height:100%;background:#111;}
-  canvas{display:block;}
-  #overlay{position:fixed;top:10px;left:10px;color:#fff;font-family:sans-serif;z-index:10}
-  #overlay div{background:rgba(0,0,0,0.6);padding:6px 8px;margin-bottom:6px;border-radius:6px;}
+html,body{margin:0;padding:0;overflow:hidden;height:100%;background:#111;}
+canvas{display:block;}
+#overlay{position:fixed;top:10px;left:10px;color:#fff;font-family:sans-serif;z-index:10;}
+#overlay div{background:rgba(0,0,0,0.6);padding:6px 8px;margin-bottom:6px;border-radius:6px;}
+#inventory{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);display:flex;gap:6px;}
+.slot{width:50px;height:50px;background:rgba(0,0,0,0.6);border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;}
+.slot.active{border:2px solid #2d9cdb;}
 </style>
 </head>
 <body>
 <div id="overlay">
   <div>HP: <span id="hp">100</span> Kills: <span id="kills">0</span></div>
-  <div>WASD = bewegen, Maus = zielen, Klick = schießen</div>
+</div>
+<div id="inventory">
+  <div class="slot active" data-slot="0">Heal</div>
+  <div class="slot" data-slot="1">Gun</div>
+  <div class="slot" data-slot="2">Boost</div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
 <script>
-// --- Szene ---
+// --- Szene & Kamera ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
@@ -44,14 +51,16 @@ ringMesh.rotation.x = -Math.PI/2; scene.add(ringMesh);
 // --- Player ---
 const player = {pos:new THREE.Vector3(0,0,0),speed:6.2,hp:100,kills:0};
 
-// --- Controls (simplified) ---
-let mouseX=0,mouseY=0;
-document.addEventListener('mousemove', e=>{
-  mouseX = e.movementX*0.002;
-  mouseY = e.movementY*0.002;
-});
+// --- Weapon (First-Person) ---
+const gunGeo = new THREE.BoxGeometry(0.2,0.1,0.6);
+const gunMat = new THREE.MeshBasicMaterial({color:0x3333ff});
+const gunMesh = new THREE.Mesh(gunGeo,gunMat);
+scene.add(gunMesh);
 
-// --- Movement ---
+// --- Controls ---
+let mouseX=0,mouseY=0;
+document.addEventListener('mousemove', e=>{ mouseX = e.movementX*0.002; mouseY = e.movementY*0.002; });
+
 const move={forward:false,backward:false,left:false,right:false};
 document.addEventListener('keydown',e=>{
   if(e.key==='w') move.forward=true;
@@ -66,14 +75,23 @@ document.addEventListener('keyup',e=>{
   if(e.key==='d') move.right=false;
 });
 
+// --- Inventory ---
+let activeSlot = 0;
+const slots = document.querySelectorAll('.slot');
+slots.forEach((slot,i)=>slot.addEventListener('click',()=>{activeSlot=i; updateInventory();}));
+function updateInventory(){
+  slots.forEach(s=>s.classList.remove('active'));
+  slots[activeSlot].classList.add('active');
+}
+
 // --- Bullets ---
-const bullets=[]; const bulletGeo=new THREE.SphereGeometry(0.08,8,8);
-const bulletMat=new THREE.MeshBasicMaterial({color:0xffea6a});
+const bullets=[]; const bulletGeo=new THREE.SphereGeometry(0.08,8,8); const bulletMat=new THREE.MeshBasicMaterial({color:0xffea6a});
 document.addEventListener('mousedown', e=>{
+  if(activeSlot!==1) return;
   const dir = new THREE.Vector3(0,0,-1).applyEuler(camera.rotation);
   const mesh = new THREE.Mesh(bulletGeo, bulletMat);
-  mesh.position.copy(camera.position); scene.add(mesh);
-  bullets.push({mesh,vel:dir.clone().multiplyScalar(60),life:2.5});
+  mesh.position.copy(camera.position).add(new THREE.Vector3(0,0,-0.3).applyEuler(camera.rotation));
+  scene.add(mesh); bullets.push({mesh,vel:dir.clone().multiplyScalar(60),life:2.5});
 });
 
 // --- Enemies ---
@@ -85,15 +103,6 @@ for(let i=0;i<10;i++){
   scene.add(mesh); enemies.push({mesh,hp:50});
 }
 
-// --- Loot ---
-const loots=[]; const lootMatHeal=new THREE.MeshStandardMaterial({color:0x43d95b});
-for(let i=0;i<6;i++){
-  const geo=new THREE.BoxGeometry(0.6,0.6,0.6);
-  const mesh=new THREE.Mesh(geo,lootMatHeal);
-  mesh.position.set(Math.random()*100-50,0.3,Math.random()*100-50);
-  scene.add(mesh); loots.push({mesh,type:'heal'});
-}
-
 // --- HUD ---
 const hpEl=document.getElementById('hp'); const killsEl=document.getElementById('kills');
 
@@ -101,33 +110,32 @@ const hpEl=document.getElementById('hp'); const killsEl=document.getElementById(
 let prevTime=performance.now();
 function animate(){
   requestAnimationFrame(animate);
-  const time=performance.now();
-  const dt=(time-prevTime)/1000; prevTime=time;
+  const time=performance.now(); const dt=(time-prevTime)/1000; prevTime=time;
 
   // Bewegung
   const forward=(move.forward?1:0)-(move.backward?1:0);
   const strafe=(move.right?1:0)-(move.left?1:0);
   const dx=Math.sin(camera.rotation.y)*forward+Math.cos(camera.rotation.y)*strafe;
   const dz=Math.cos(camera.rotation.y)*forward-Math.sin(camera.rotation.y)*strafe;
-  player.pos.x+=dx*player.speed*dt;
-  player.pos.z+=dz*player.speed*dt;
+  player.pos.x+=dx*player.speed*dt; player.pos.z+=dz*player.speed*dt;
 
   // Kamera Update
-  camera.rotation.y-=mouseX;
-  camera.rotation.x=Math.max(-Math.PI/2,Math.min(Math.PI/2,camera.rotation.x-mouseY));
+  camera.rotation.y-=mouseX; camera.rotation.x=Math.max(-Math.PI/2,Math.min(Math.PI/2,camera.rotation.x-mouseY));
   camera.position.set(player.pos.x,1.6,player.pos.z);
+
+  // Waffe vorne
+  const gunOffset = new THREE.Vector3(0,-0.1,-0.5).applyEuler(camera.rotation);
+  gunMesh.position.copy(camera.position).add(gunOffset);
+  gunMesh.rotation.copy(camera.rotation);
 
   mouseX=0; mouseY=0;
 
   // Bullets
   for(let i=bullets.length-1;i>=0;i--){
-    const b=bullets[i];
-    b.mesh.position.addScaledVector(b.vel,dt);
-    b.life-=dt;
+    const b=bullets[i]; b.mesh.position.addScaledVector(b.vel,dt); b.life-=dt;
     if(b.life<=0){ scene.remove(b.mesh); bullets.splice(i,1); }
   }
 
-  // Render
   renderer.render(scene,camera);
 }
 animate();
