@@ -3,64 +3,80 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mini Fortnite BR</title>
+<title>Ultimate Mini Fortnite BR</title>
 <style>
 body { margin:0; background:#87ceeb; font-family:sans-serif; overflow:hidden;}
-#gameCanvas { background:#4CAF50; display:block; margin:auto; border:2px solid #333;}
+#gameCanvas { display:block; margin:auto; border:2px solid #333; background:#4CAF50;}
 #info { color:white; text-align:center; margin-top:5px; font-size:18px;}
 </style>
 </head>
 <body>
 <canvas id="gameCanvas" width="800" height="600"></canvas>
-<div id="info">HP: <span id="hp">100</span> | Kills: <span id="kills">0</span> | Loot: <span id="loot">0</span></div>
+<div id="info">HP: <span id="hp">100</span> | Kills: <span id="kills">0</span> | Loot: <span id="loot">0</span> | Weapon: <span id="weapon">Pistol</span></div>
 
 <script>
+// Canvas
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Spieler
-let player = {x:400, y:300, size:20, speed:5, hp:100, loot:0};
+// Sounds
+const shootSound = new Audio('https://www.soundjay.com/mechanical/sounds/shotgun-01.mp3');
+const lootSound = new Audio('https://www.soundjay.com/button/sounds/button-16.mp3');
 
-// Eingaben
+// Spieler
+let player = {x:400, y:300, size:20, speed:5, hp:100, loot:0, weapon:'Pistol', damage:25, shootRate:10, shootCooldown:0};
+
+// Eingabe
 let keys = {};
-document.addEventListener('keydown', e=>keys[e.key]=true);
-document.addEventListener('keyup', e=>keys[e.key]=false);
+document.addEventListener('keydown', e => keys[e.key]=true);
+document.addEventListener('keyup', e => keys[e.key]=false);
 
 // Schüsse
 let bullets=[];
 document.addEventListener('click', e=>{
-    let angle = Math.atan2(e.clientY-canvas.getBoundingClientRect().top-player.y,
-                           e.clientX-canvas.getBoundingClientRect().left-player.x);
-    bullets.push({x:player.x,y:player.y,dx:Math.cos(angle)*10,dy:Math.sin(angle)*10});
+    if(player.shootCooldown<=0){
+        let angle = Math.atan2(e.clientY - canvas.getBoundingClientRect().top - player.y,
+                               e.clientX - canvas.getBoundingClientRect().left - player.x);
+        bullets.push({x:player.x,y:player.y,dx:Math.cos(angle)*10,dy:Math.sin(angle)*10,damage:player.damage});
+        shootSound.currentTime=0; shootSound.play();
+        player.shootCooldown=player.shootRate;
+    }
 });
 
 // Gegner
 let enemies=[];
-function spawnEnemy(){ 
-    let x=Math.random()*canvas.width; 
+function spawnEnemy(){
+    let x=Math.random()*canvas.width;
     let y=Math.random()*canvas.height;
-    enemies.push({x,y,size:20,hp:50,speed:1+Math.random()*2}); 
+    enemies.push({x,y,size:20,hp:50,speed:1+Math.random()*2});
 }
-for(let i=0;i<10;i++) spawnEnemy();
-setInterval(spawnEnemy,5000);
+for(let i=0;i<15;i++) spawnEnemy();
+setInterval(spawnEnemy,4000);
 
 // Loot
 let loots=[];
 function spawnLoot(){
     let x=Math.random()*canvas.width;
     let y=Math.random()*canvas.height;
-    loots.push({x,y,size:10,type:'heal'});
+    let type=Math.random()<0.5?'heal':'weapon';
+    loots.push({x,y,size:10,type});
 }
-setInterval(spawnLoot,8000);
+setInterval(spawnLoot,6000);
+
+// Gebäude
+let buildings=[];
+for(let i=0;i<8;i++){
+    buildings.push({x:Math.random()*700,y:Math.random()*500,width:50+Math.random()*50,height:50+Math.random()*50});
+}
 
 // Ring
-let ring = {x:400, y:300, radius:350, shrinkRate:0.01};
+let ring = {x:400, y:300, radius:350, shrinkRate:0.015};
 
 // Spiel-Loop
 function gameLoop(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    // Ring zeichnen
+    // Ring
     ctx.beginPath();
     ctx.arc(ring.x,ring.y,ring.radius,0,Math.PI*2);
     ctx.strokeStyle='red'; ctx.lineWidth=5;
@@ -78,31 +94,40 @@ function gameLoop(){
     ctx.fillStyle='blue';
     ctx.fillRect(player.x-player.size/2,player.y-player.size/2,player.size,player.size);
 
+    // Gebäude
+    buildings.forEach(b=>{
+        ctx.fillStyle='brown';
+        ctx.fillRect(b.x,b.y,b.width,b.height);
+    });
+
     // Bullets
     bullets.forEach((b,i)=>{
         b.x+=b.dx; b.y+=b.dy;
-        ctx.fillStyle='yellow'; ctx.fillRect(b.x-2,b.y-2,4,4);
+        ctx.fillStyle='yellow';
+        ctx.fillRect(b.x-2,b.y-2,4,4);
         if(b.x<0||b.x>canvas.width||b.y<0||b.y>canvas.height) bullets.splice(i,1);
     });
 
-    // Gegner bewegen & zeichnen
-    enemies.forEach((e,j)=>{
+    // Gegner
+    enemies.forEach((e,ei)=>{
         let dx=player.x-e.x; let dy=player.y-e.y;
         let dist=Math.sqrt(dx*dx+dy*dy);
-        e.x+=(dx/dist)*e.speed; e.y+=(dy/dist)*e.speed;
+        e.x += (dx/dist)*e.speed;
+        e.y += (dy/dist)*e.speed;
         ctx.fillStyle='red'; ctx.fillRect(e.x-e.size/2,e.y-e.size/2,e.size,e.size);
     });
 
-    // Loot zeichnen
-    loots.forEach((l,i)=>{
-        ctx.fillStyle='orange'; ctx.fillRect(l.x-l.size/2,l.y-l.size/2,l.size,l.size);
+    // Loot
+    loots.forEach((l,li)=>{
+        ctx.fillStyle=l.type==='heal'?'green':'purple';
+        ctx.fillRect(l.x-l.size/2,l.y-l.size/2,l.size,l.size);
     });
 
     // Kollisionen
     bullets.forEach((b,bi)=>{
         enemies.forEach((e,ei)=>{
             if(Math.abs(b.x-e.x)<e.size && Math.abs(b.y-e.y)<e.size){
-                e.hp-=25; bullets.splice(bi,1);
+                e.hp-=b.damage; bullets.splice(bi,1);
                 if(e.hp<=0){ enemies.splice(ei,1); player.loot++; document.getElementById('kills').innerText=player.loot;}
             }
         });
@@ -116,7 +141,9 @@ function gameLoop(){
 
     loots.forEach((l,li)=>{
         if(Math.abs(player.x-l.x)<l.size && Math.abs(player.y-l.y)<l.size){
-            player.hp+=20; if(player.hp>100) player.hp=100;
+            if(l.type==='heal'){ player.hp+=20; if(player.hp>100) player.hp=100; }
+            else{ player.weapon='Rifle'; player.damage=40; player.shootRate=5; document.getElementById('weapon').innerText='Rifle'; }
+            lootSound.currentTime=0; lootSound.play();
             loots.splice(li,1);
         }
     });
@@ -125,10 +152,13 @@ function gameLoop(){
     let dx=player.x-ring.x; let dy=player.y-ring.y; let dist=Math.sqrt(dx*dx+dy*dy);
     if(dist>ring.radius){ player.hp-=0.3; }
 
+    // HUD
     document.getElementById('hp').innerText=Math.floor(player.hp);
     document.getElementById('loot').innerText=player.loot;
 
     if(player.hp<=0){ alert('Game Over! Loot: '+player.loot); location.reload(); }
+
+    if(player.shootCooldown>0) player.shootCooldown--;
 
     requestAnimationFrame(gameLoop);
 }
