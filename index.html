@@ -1,359 +1,143 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Mini 3D Fortnite BR (Three.js)</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini 3D Fortnite BR</title>
 <style>
-  html,body{height:100%;margin:0;overflow:hidden;background:#111;}
-  canvas{display:block}
-  #overlay{position:fixed;left:12px;top:12px;color:#fff;font-family:Arial,Helvetica,sans-serif;z-index:20}
-  #overlay .panel{background:rgba(0,0,0,0.55);padding:8px 10px;border-radius:8px;margin-bottom:8px}
-  #center-hint{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#fff;pointer-events:none;font-family:monospace;opacity:0.9}
-  #startBtn{display:inline-block;background:#2d9cdb;padding:12px 18px;border-radius:8px;cursor:pointer}
+  html,body{margin:0;padding:0;overflow:hidden;height:100%;background:#111;}
+  canvas{display:block;}
+  #overlay{position:fixed;top:10px;left:10px;color:#fff;font-family:sans-serif;z-index:10}
+  #overlay div{background:rgba(0,0,0,0.6);padding:6px 8px;margin-bottom:6px;border-radius:6px;}
 </style>
 </head>
 <body>
 <div id="overlay">
-  <div class="panel">HP: <span id="hp">100</span> &nbsp; Kills: <span id="kills">0</span></div>
-  <div class="panel">WASD = laufen, Maus = zielen, Klick = Schießen</div>
-  <div class="panel">Tipp: Teste über <code>http://localhost:8080</code> oder GitHub Pages</div>
+  <div>HP: <span id="hp">100</span> Kills: <span id="kills">0</span></div>
+  <div>WASD = bewegen, Maus = zielen, Klick = schießen</div>
 </div>
-<div id="center-hint"><div id="startBtn">Klicke hier zum Starten (Pointer Lock)</div></div>
-
-<script type="module">
-import * as THREE from 'https://unpkg.com/three@0.152.2/build/three.module.js';
-import { PointerLockControls } from 'https://unpkg.com/three@0.152.2/examples/jsm/controls/PointerLockControls.js';
-
-/* ---------- Szene & Renderer ---------- */
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+<script>
+// --- Szene ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
-
-const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 2000);
-camera.position.set(0, 1.6, 0); // eye height
-
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(innerWidth, innerHeight);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
+camera.position.set(0,1.6,0);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-/* ---------- Licht ---------- */
-const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.9);
-hemi.position.set(0,200,0);
-scene.add(hemi);
-const dir = new THREE.DirectionalLight(0xffffff, 0.6);
-dir.position.set(-100,100,-100);
-scene.add(dir);
+// --- Licht ---
+const hemi = new THREE.HemisphereLight(0xffffff,0x444444,0.9); hemi.position.set(0,200,0); scene.add(hemi);
+const dir = new THREE.DirectionalLight(0xffffff,0.6); dir.position.set(-100,100,-100); scene.add(dir);
 
-/* ---------- Boden (Terrain) ---------- */
-const groundGeo = new THREE.PlaneGeometry(160, 160, 8, 8);
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x317a31 });
-const ground = new THREE.Mesh(groundGeo, groundMat);
-ground.rotation.x = -Math.PI/2;
-scene.add(ground);
+// --- Boden ---
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(160,160), new THREE.MeshStandardMaterial({color:0x317a31}));
+ground.rotation.x = -Math.PI/2; scene.add(ground);
 
-/* ---------- Ring (shrinkable) ---------- */
+// --- Ring ---
 let ringRadius = 70;
-const ringGeom = new THREE.RingGeometry(ringRadius-0.8, ringRadius, 128);
-const ringMat = new THREE.MeshBasicMaterial({ color:0xff4444, side:THREE.DoubleSide, transparent:true, opacity:0.9 });
-const ringMesh = new THREE.Mesh(ringGeom, ringMat);
-ringMesh.rotation.x = -Math.PI/2;
-scene.add(ringMesh);
+const ringMat = new THREE.MeshBasicMaterial({color:0xff4444,side:THREE.DoubleSide,transparent:true,opacity:0.9});
+let ringMesh = new THREE.Mesh(new THREE.RingGeometry(ringRadius-0.8, ringRadius,128), ringMat);
+ringMesh.rotation.x = -Math.PI/2; scene.add(ringMesh);
 
-/* ---------- Player (logic-only: camera + collider) ---------- */
-const player = {
-  pos: new THREE.Vector3(0, 0, 0),
-  velocity: new THREE.Vector3(),
-  speed: 6.2,
-  hp: 100,
-  kills: 0
-};
+// --- Player ---
+const player = {pos:new THREE.Vector3(0,0,0),speed:6.2,hp:100,kills:0};
 
-/* ---------- Controls (Pointer Lock) ---------- */
-const controls = new PointerLockControls(camera, renderer.domElement);
-
-const startBtn = document.getElementById('startBtn');
-startBtn.addEventListener('click', ()=> {
-  controls.lock();
-});
-controls.addEventListener('lock', () => {
-  document.getElementById('center-hint').style.display = 'none';
-});
-controls.addEventListener('unlock', () => {
-  document.getElementById('center-hint').style.display = '';
+// --- Controls (simplified) ---
+let mouseX=0,mouseY=0;
+document.addEventListener('mousemove', e=>{
+  mouseX = e.movementX*0.002;
+  mouseY = e.movementY*0.002;
 });
 
-/* ---------- Map: simple boxes as buildings ---------- */
-const buildings = [];
-const buildingMat = new THREE.MeshStandardMaterial({ color: 0x6b3f2f });
-for(let i=0;i<10;i++){
-  const w = THREE.MathUtils.randFloat(4, 14);
-  const d = THREE.MathUtils.randFloat(4, 14);
-  const h = THREE.MathUtils.randFloat(3, 12);
-  const bx = THREE.MathUtils.randFloatSpread(120);
-  const bz = THREE.MathUtils.randFloatSpread(120);
-  const geom = new THREE.BoxGeometry(w, h, d);
-  const m = new THREE.Mesh(geom, buildingMat);
-  m.position.set(bx, h/2, bz);
-  scene.add(m);
-  buildings.push({mesh: m, w, d, h, x:bx, z:bz});
-}
+// --- Movement ---
+const move={forward:false,backward:false,left:false,right:false};
+document.addEventListener('keydown',e=>{
+  if(e.key==='w') move.forward=true;
+  if(e.key==='s') move.backward=true;
+  if(e.key==='a') move.left=true;
+  if(e.key==='d') move.right=true;
+});
+document.addEventListener('keyup',e=>{
+  if(e.key==='w') move.forward=false;
+  if(e.key==='s') move.backward=false;
+  if(e.key==='a') move.left=false;
+  if(e.key==='d') move.right=false;
+});
 
-/* ---------- Enemies (boxes) ---------- */
-const enemies = [];
-const enemyMat = new THREE.MeshStandardMaterial({ color: 0xd33 });
-function spawnEnemy(){
-  const ex = THREE.MathUtils.randFloatSpread(140);
-  const ez = THREE.MathUtils.randFloatSpread(140);
-  const geo = new THREE.BoxGeometry(1.2, 1.8, 1.2);
-  const mesh = new THREE.Mesh(geo, enemyMat);
-  mesh.position.set(ex, 0.9, ez);
-  scene.add(mesh);
-  enemies.push({mesh, hp: THREE.MathUtils.randFloat(30, 90), speed: THREE.MathUtils.randFloat(0.6,1.8), state:'patrol', target: new THREE.Vector3(THREE.MathUtils.randFloatSpread(60),0,THREE.MathUtils.randFloatSpread(60))});
-}
-for(let i=0;i<10;i++) spawnEnemy();
-
-/* ---------- Bullets (spheres) ---------- */
-const bullets = [];
-const bulletGeo = new THREE.SphereGeometry(0.08,8,8);
-const bulletMat = new THREE.MeshBasicMaterial({ color:0xffea6a });
-
-function fireBullet(dirVec){
+// --- Bullets ---
+const bullets=[]; const bulletGeo=new THREE.SphereGeometry(0.08,8,8);
+const bulletMat=new THREE.MeshBasicMaterial({color:0xffea6a});
+document.addEventListener('mousedown', e=>{
+  const dir = new THREE.Vector3(0,0,-1).applyEuler(camera.rotation);
   const mesh = new THREE.Mesh(bulletGeo, bulletMat);
-  const spawnPos = new THREE.Vector3().copy(camera.position);
-  spawnPos.y = 1.6; // eye height
-  mesh.position.copy(spawnPos);
-  scene.add(mesh);
-  bullets.push({
-    mesh,
-    vel: dirVec.clone().multiplyScalar(60),
-    life: 2.5 // seconds
-  });
+  mesh.position.copy(camera.position); scene.add(mesh);
+  bullets.push({mesh,vel:dir.clone().multiplyScalar(60),life:2.5});
+});
+
+// --- Enemies ---
+const enemies=[]; const enemyMat=new THREE.MeshStandardMaterial({color:0xd33});
+for(let i=0;i<10;i++){
+  const geo=new THREE.BoxGeometry(1.2,1.8,1.2);
+  const mesh=new THREE.Mesh(geo,enemyMat);
+  mesh.position.set(Math.random()*140-70,0.9,Math.random()*140-70);
+  scene.add(mesh); enemies.push({mesh,hp:50});
 }
 
-/* ---------- Loot (hearts or gun) ---------- */
-const loots = [];
-const lootMatHeal = new THREE.MeshStandardMaterial({ color:0x43d95b });
-const lootMatGun = new THREE.MeshStandardMaterial({ color:0x8f72ff });
-function spawnLootAt(x,z,type='heal'){
-  const geo = new THREE.BoxGeometry(0.6,0.6,0.6);
-  const mesh = new THREE.Mesh(geo, type==='heal' ? lootMatHeal : lootMatGun);
-  mesh.position.set(x, 0.3, z);
-  scene.add(mesh);
-  loots.push({mesh, type});
-}
+// --- Loot ---
+const loots=[]; const lootMatHeal=new THREE.MeshStandardMaterial({color:0x43d95b});
 for(let i=0;i<6;i++){
-  spawnLootAt(THREE.MathUtils.randFloatSpread(100), THREE.MathUtils.randFloatSpread(100), Math.random()<0.6 ? 'heal' : 'gun');
+  const geo=new THREE.BoxGeometry(0.6,0.6,0.6);
+  const mesh=new THREE.Mesh(geo,lootMatHeal);
+  mesh.position.set(Math.random()*100-50,0.3,Math.random()*100-50);
+  scene.add(mesh); loots.push({mesh,type:'heal'});
 }
 
-/* ---------- HUD references ---------- */
-const hpEl = document.getElementById('hp');
-const killsEl = document.getElementById('kills');
+// --- HUD ---
+const hpEl=document.getElementById('hp'); const killsEl=document.getElementById('kills');
 
-/* ---------- Input handling (WASD) ---------- */
-const move = { forward:false, backward:false, left:false, right:false };
-window.addEventListener('keydown', (e)=>{
-  if(e.key === 'w') move.forward = true;
-  if(e.key === 's') move.backward = true;
-  if(e.key === 'a') move.left = true;
-  if(e.key === 'd') move.right = true;
-});
-window.addEventListener('keyup', (e)=>{
-  if(e.key === 'w') move.forward = false;
-  if(e.key === 's') move.backward = false;
-  if(e.key === 'a') move.left = false;
-  if(e.key === 'd') move.right = false;
-});
-
-/* ---------- Mouse shoot ---------- */
-window.addEventListener('mousedown', (e)=>{
-  if(!controls.isLocked) return;
-  // shoot in camera forward direction
-  const dir = new THREE.Vector3();
-  camera.getWorldDirection(dir);
-  fireBullet(dir);
-});
-
-/* ---------- Simple collisions helpers ---------- */
-function pointInBox(px, pz, box){ // box by center x,z and dims w,d
-  return (px > box.x - box.w/2 && px < box.x + box.w/2 && pz > box.z - box.d/2 && pz < box.z + box.d/2);
-}
-
-/* ---------- Main update loop ---------- */
-let prevTime = performance.now();
+// --- Animate ---
+let prevTime=performance.now();
 function animate(){
   requestAnimationFrame(animate);
-  const time = performance.now();
-  const dt = (time - prevTime)/1000;
-  prevTime = time;
+  const time=performance.now();
+  const dt=(time-prevTime)/1000; prevTime=time;
 
-  // player movement from controls: convert camera rotation to movement vector
-  if(controls.isLocked){
-    const forward = (move.forward ? 1 : 0) - (move.backward ? 1 : 0);
-    const strafe = (move.right ? 1 : 0) - (move.left ? 1 : 0);
-    const yaw = controls.getObject().rotation.y;
-    // build direction
-    const dirX = (Math.sin(yaw) * forward) + (Math.cos(yaw) * strafe);
-    const dirZ = (Math.cos(yaw) * forward) - (Math.sin(yaw) * strafe);
-    const v = new THREE.Vector3(dirX,0,dirZ);
-    if(v.lengthSq() > 0.0001) v.normalize().multiplyScalar(player.speed * dt);
-    player.pos.add(v);
-    // collide with buildings (simple pushback)
-    for(const b of buildings){
-      const halfW = b.scale?.x || (b.geometry?.parameters?.width/2) || (b.w/2);
-      const bx = b.mesh? b.mesh.position.x : b.x;
-      const bz = b.mesh? b.mesh.position.z : b.z;
-      // crude: if inside footprint, push out
-      const minX = b.mesh.position.x - b.w/2;
-      const maxX = b.mesh.position.x + b.w/2;
-      const minZ = b.mesh.position.z - b.d/2;
-      const maxZ = b.mesh.position.z + b.d/2;
-      if(player.pos.x > minX && player.pos.x < maxX && player.pos.z > minZ && player.pos.z < maxZ){
-        // push back along move vector
-        player.pos.sub(v);
-      }
-    }
+  // Bewegung
+  const forward=(move.forward?1:0)-(move.backward?1:0);
+  const strafe=(move.right?1:0)-(move.left?1:0);
+  const dx=Math.sin(camera.rotation.y)*forward+Math.cos(camera.rotation.y)*strafe;
+  const dz=Math.cos(camera.rotation.y)*forward-Math.sin(camera.rotation.y)*strafe;
+  player.pos.x+=dx*player.speed*dt;
+  player.pos.z+=dz*player.speed*dt;
 
-    // sync camera / controls position
-    controls.getObject().position.set(player.pos.x, 1.6, player.pos.z);
+  // Kamera Update
+  camera.rotation.y-=mouseX;
+  camera.rotation.x=Math.max(-Math.PI/2,Math.min(Math.PI/2,camera.rotation.x-mouseY));
+  camera.position.set(player.pos.x,1.6,player.pos.z);
+
+  mouseX=0; mouseY=0;
+
+  // Bullets
+  for(let i=bullets.length-1;i>=0;i--){
+    const b=bullets[i];
+    b.mesh.position.addScaledVector(b.vel,dt);
+    b.life-=dt;
+    if(b.life<=0){ scene.remove(b.mesh); bullets.splice(i,1); }
   }
 
-  // update bullets
-  for(let i = bullets.length-1; i >= 0; i--){
-    const b = bullets[i];
-    b.mesh.position.addScaledVector(b.vel, dt);
-    b.life -= dt;
-    // check against enemies
-    for(let j = enemies.length-1; j >= 0; j--){
-      const e = enemies[j];
-      const dist = b.mesh.position.distanceTo(e.mesh.position);
-      if(dist < 1.0){
-        // hit
-        e.hp -= 30;
-        scene.remove(b.mesh);
-        bullets.splice(i,1);
-        if(e.hp <= 0){
-          // kill
-          scene.remove(e.mesh);
-          enemies.splice(j,1);
-          player.kills++;
-          player.hp = Math.min(100, player.hp + 8); // small heal on kill
-          // spawn loot
-          if(Math.random() < 0.6) spawnLootAt(e.mesh.position.x + Math.random()*2-1, e.mesh.position.z + Math.random()*2-1, Math.random()<0.6?'heal':'gun');
-        }
-        break;
-      }
-    }
-    if(b && b.life <= 0){
-      scene.remove(b.mesh);
-      const idx = bullets.indexOf(b);
-      if(idx >= 0) bullets.splice(idx,1);
-    }
-  }
-
-  // enemy AI: simple chase if player close, else patrol
-  for(const e of enemies){
-    const dx = player.pos.x - e.mesh.position.x;
-    const dz = player.pos.z - e.mesh.position.z;
-    const dist = Math.hypot(dx,dz);
-    if(dist < 25){
-      // chase
-      e.mesh.position.x += (dx/dist) * e.speed * dt * 10;
-      e.mesh.position.z += (dz/dist) * e.speed * dt * 10;
-    } else {
-      // patrol to target
-      const tx = e.target.x, tz = e.target.z;
-      const pdx = tx - e.mesh.position.x, pdz = tz - e.mesh.position.z;
-      const pdist = Math.hypot(pdx,pdz);
-      if(pdist < 1) { e.target.set(THREE.MathUtils.randFloatSpread(80), 0, THREE.MathUtils.randFloatSpread(80)); }
-      else {
-        e.mesh.position.x += (pdx/pdist) * e.speed * dt * 3;
-        e.mesh.position.z += (pdz/pdist) * e.speed * dt * 3;
-      }
-    }
-    // basic collision with buildings (push out)
-    for(const b of buildings){
-      const minX = b.mesh.position.x - b.w/2;
-      const maxX = b.mesh.position.x + b.w/2;
-      const minZ = b.mesh.position.z - b.d/2;
-      const maxZ = b.mesh.position.z + b.d/2;
-      if(e.mesh.position.x > minX && e.mesh.position.x < maxX && e.mesh.position.z > minZ && e.mesh.position.z < maxZ){
-        // push to outside
-        if(e.mesh.position.x < b.mesh.position.x) e.mesh.position.x = minX - 1;
-        else e.mesh.position.x = maxX + 1;
-      }
-    }
-  }
-
-  // pickup loot
-  for(let i = loots.length-1; i >= 0; i--){
-    const l = loots[i];
-    const d = Math.hypot(player.pos.x - l.mesh.position.x, player.pos.z - l.mesh.position.z);
-    if(d < 1.2){
-      if(l.type === 'heal'){ player.hp = Math.min(100, player.hp + 30); }
-      else { /* gun */ player.speed += 1; setTimeout(()=>player.speed -= 1, 5000); }
-      scene.remove(l.mesh);
-      loots.splice(i,1);
-    }
-  }
-
-  // shrink ring slowly
-  ringRadius -= 0.02 * dt * 60;
-  if(ringRadius < 8) ringRadius = 8;
-  // rebuild ring geometry (cheap)
-  ringMesh.geometry.dispose();
-  ringMesh.geometry = new THREE.RingGeometry(ringRadius-0.3, ringRadius, 128);
-
-  // if player outside ring -> damage
-  if(Math.hypot(player.pos.x, player.pos.z) > ringRadius + 1.2){
-    player.hp -= 8 * dt;
-  }
-
-  // sync HUD
-  hpEl.innerText = Math.max(0, Math.floor(player.hp));
-  killsEl.innerText = player.kills;
-
-  // spawn occasional enemies / loot while playing
-  if(Math.random() < 0.003){ spawnEnemy(); }
-  if(Math.random() < 0.002){ spawnLootAt(THREE.MathUtils.randFloatSpread(120), THREE.MathUtils.randFloatSpread(120), Math.random()<0.6?'heal':'gun'); }
-
-  // death
-  if(player.hp <= 0){
-    // game over
-    playGameOver();
-    controls.unlock();
-    alert('Game Over — Kills: ' + player.kills);
-    window.location.reload();
-    return;
-  }
-
-  renderer.render(scene, camera);
+  // Render
+  renderer.render(scene,camera);
 }
 animate();
 
-/* ---------- simple audio feedback (beeps) ---------- */
-const AudioCtx = window.AudioContext || window.webkitAudioContext;
-const audioCtx = new AudioCtx();
-function beep(freq, dur=0.06, gain=0.06, type='sine'){
-  const o = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-  o.type = type;
-  o.frequency.value = freq;
-  g.gain.value = gain;
-  o.connect(g); g.connect(audioCtx.destination);
-  o.start();
-  o.stop(audioCtx.currentTime + dur);
-}
-function playGameOver(){ beep(220,0.2,0.12,'sine'); }
-
-/* ---------- resize handling ---------- */
+// --- Resize ---
 window.addEventListener('resize', ()=>{
-  camera.aspect = innerWidth / innerHeight;
+  camera.aspect=window.innerWidth/window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+  renderer.setSize(window.innerWidth, window.innerHeight);
 });
-
-/* ---------- friendly note ---------- */
-console.log('Mini 3D BR ready — test with WASD + click to shoot. For best experience run via localhost or GitHub Pages.');
 </script>
 </body>
 </html>
